@@ -1,0 +1,82 @@
+# Verify Posh-SSH is available and import it so its types are recognized by the parser.
+if (-not (Get-Module -ListAvailable -Name Posh-SSH)) {
+    Write-Error "The 'Posh-SSH' module is not installed. Please install it using 'Install-Module Posh-SSH' and try again."
+    return # Exit the script if the module is not available
+}
+Import-Module Posh-SSH -Force
+
+function Test-SSHConnection {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Server,
+
+        [Parameter(Mandatory=$true)]
+        [System.Management.Automation.PSCredential]$Credential
+    )
+
+    Write-Host "Attempting to connect to $($Server) via SSH..."
+    $session = $null
+    $sessionEstablished = $false
+
+    try {
+        # Attempt to establish an SSH session with a 20-second timeout.
+        $session = New-SSHSession -ComputerName $Server -Credential $Credential -Timeout 20 -ErrorAction Stop
+        
+        if ($session) {
+            $sessionEstablished = $true
+            Write-Host "SSH connection to $($Server) established successfully." -ForegroundColor Green
+
+            # Optionally, you can run a simple command to further test connectivity
+            # $result = Invoke-SSHCommand -SSHSession $session -Command "hostname"
+            # Write-Host "Command 'hostname' executed. Output: $($result.Output)"
+        }
+    }
+    catch [System.Net.Sockets.SocketException] {
+        # This exception typically occurs for host not found or connection refused (firewall).
+        if ($_.Exception.ErrorCode -eq 11001) { # WSAHOST_NOT_FOUND or similar
+            Write-Warning "Failed to connect to $($Server): Host not found or inaccessible (DNS issue)."
+        } elseif ($_.Exception.ErrorCode -eq 10061) { # WSAECONNREFUSED
+            Write-Warning "Failed to connect to $($Server): Connection refused. This might indicate a firewall blocking the connection or the SSH service not running on the remote host."
+        } else {
+            Write-Warning "Failed to connect to $($Server) due to a network error: $($_.Exception.Message)"
+        }
+    }
+    catch [PoshSSH.PoshSSHException] {
+        # Posh-SSH specific exceptions, often related to authentication or protocol.
+        if ($_.Exception.Message -like "*authentication failed*" -or $_.Exception.Message -like "*No suitable authentication method found*") {
+            Write-Warning "Failed to connect to $($Server): Authentication failed. Remote server denied interactive authentication or provided credentials are incorrect."
+        } elseif ($_.Exception.Message -like "*Connection timed out*") {
+            Write-Warning "Failed to connect to $($Server): Connection timed out after 20 seconds. The host might be unreachable or heavily delayed."
+        } else {
+            Write-Warning "An SSH-specific error occurred during connection to $($Server): $($_.Exception.Message)"
+        }
+    }
+    catch {
+        # Catch any other unexpected errors.
+        Write-Warning "An unexpected error occurred while connecting to $($Server): $($_.Exception.Message)"
+    }
+    finally {
+        # Ensure the SSH session is closed if it was established.
+        if ($sessionEstablished -and $session) {
+            try {
+                Remove-SSHSession -SSHSession $session -ErrorAction SilentlyContinue
+                Write-Host "SSH session to $($Server) closed." -ForegroundColor Cyan
+            }
+            catch {
+                Write-Warning "Failed to close SSH session to $($Server): $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
+# Example Usage:
+# Replace 'your_remote_server' with the actual server hostname or IP address.
+# Replace 'your_username' and 'your_password' with the actual credentials.
+
+# $ServerName = "your_remote_server"
+# $Username = "your_username"
+# $Password = ConvertTo-SecureString "your_password" -AsPlainText -Force
+# $Cred = New-Object System.Management.Automation.PSCredential($Username, $Password)
+
+# Test-SSHConnection -Server $ServerName -Credential $Cred
