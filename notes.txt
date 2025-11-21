@@ -42,19 +42,22 @@ function Test-SSHConnection {
             Write-Warning "Failed to connect to $($Server) due to a network error: $($_.Exception.Message)"
         }
     }
-    catch [PoshSSH.PoshSSHException] {
-        # Posh-SSH specific exceptions, often related to authentication or protocol.
-        if ($_.Exception.Message -like "*authentication failed*" -or $_.Exception.Message -like "*No suitable authentication method found*") {
-            Write-Warning "Failed to connect to $($Server): Authentication failed. Remote server denied interactive authentication or provided credentials are incorrect."
-        } elseif ($_.Exception.Message -like "*Connection timed out*") {
-            Write-Warning "Failed to connect to $($Server): Connection timed out after 20 seconds. The host might be unreachable or heavily delayed."
-        } else {
-            Write-Warning "An SSH-specific error occurred during connection to $($Server): $($_.Exception.Message)"
-        }
-    }
     catch {
-        # Catch any other unexpected errors.
-        Write-Warning "An unexpected error occurred while connecting to $($Server): $($_.Exception.Message)"
+        $exception = $_.Exception
+        # Check for Posh-SSH specific exceptions at runtime to avoid parsing errors
+        if ($exception.GetType().Name -eq 'PoshSSHException') {
+            if ($exception.Message -like "*authentication failed*" -or $exception.Message -like "*No suitable authentication method found*") {
+                Write-Warning "Failed to connect to $($Server): Authentication failed. Remote server denied interactive authentication or provided credentials are incorrect."
+            } elseif ($exception.Message -like "*Connection timed out*") {
+                Write-Warning "Failed to connect to $($Server): Connection timed out after 20 seconds. The host might be unreachable or heavily delayed."
+            } else {
+                Write-Warning "An SSH-specific error occurred during connection to $($Server): $($exception.Message)"
+            }
+        }
+        else {
+            # Catch any other unexpected errors.
+            Write-Warning "An unexpected error occurred while connecting to $($Server): $($exception.Message)"
+        }
     }
     finally {
         # Ensure the SSH session is closed if it was established.
@@ -70,13 +73,3 @@ function Test-SSHConnection {
     }
 }
 
-# Example Usage:
-# Replace 'your_remote_server' with the actual server hostname or IP address.
-# Replace 'your_username' and 'your_password' with the actual credentials.
-
-# $ServerName = "your_remote_server"
-# $Username = "your_username"
-# $Password = ConvertTo-SecureString "your_password" -AsPlainText -Force
-# $Cred = New-Object System.Management.Automation.PSCredential($Username, $Password)
-
-# Test-SSHConnection -Server $ServerName -Credential $Cred
