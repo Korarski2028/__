@@ -1,0 +1,102 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Infra Ops IT Knowledge Base{% endblock %}</title>
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .navbar { box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+        .search-bar { margin-bottom: 2rem; }
+        .article-card { margin-bottom: 1.5rem; }
+        .footer { padding: 2rem 0; margin-top: 2rem; background-color: #343a40; color: white; }
+        #drop-zone {
+            border: 2px dashed #007bff;
+            border-radius: 5px;
+            padding: 50px;
+            text-align: center;
+            cursor: pointer;
+            color: #007bff;
+            margin-bottom: 1rem;
+        }
+        #drop-zone.dragover { background-color: #e9ecef; }
+        #image-preview { max-width: 200px; max-height: 200px; margin-top: 1rem; }
+        .tag-custom {
+            color: #0d6efd;
+            background-color: #ffffff;
+            border: 1px solid #0d6efd;
+            padding: 0.35em 0.65em;
+            font-size: .75em;
+            font-weight: 700;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 0.25rem;
+        }
+
+        /* Custom container width for larger screens */
+        @media (min-width: 1200px) { /* xl breakpoint */
+            .container {
+                max-width: 1280px;
+            }
+        }
+        @media (min-width: 1400px) { /* xxl breakpoint */
+            .container {
+                max-width: 1600px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-white mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" height="30" class="d-inline-block align-top me-2">
+                <span class="visually-hidden">Infra Ops IT Knowledge Base</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('bookmarks') }}">Bookmarks</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="btn btn-primary" href="{{ url_for('create_article') }}">+ New Article</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer text-center">
+        <div class="container">
+            <span>Infra Ops IT Knowledge Base &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
