@@ -1,0 +1,284 @@
+import os
+import secrets
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    jsonify,
+    send_from_directory
+)
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import or_
+import markdown2
+from PIL import Image
+
+# --- Configuration ---
+
+# Get the absolute path of the directory where the script is located
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+# Define paths for the database and upload folder
+DATABASE_PATH = os.path.join(BASE_DIR, 'app.db')
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
+TEMPLATES_FOLDER = os.path.join(BASE_DIR, 'templates')
+
+# Ensure all necessary folders exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(TEMPLATES_FOLDER, exist_ok=True)
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = secrets.token_hex(16)
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DATABASE_PATH}'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload size
+
+db = SQLAlchemy(app)
+
+# --- SQLAlchemy Models ---
+
+class ArticleImage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    article_id = db.Column(db.Integer, db.ForeignKey('article.id'), nullable=False)
+    filename = db.Column(db.String(100), nullable=False)
+
+class Article(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    category = db.Column(db.String(50), nullable=False)
+    tags = db.Column(db.String(200), default='')
+    content_raw = db.Column(db.Text, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    images = db.relationship('ArticleImage', backref='article', lazy=True, cascade="all, delete-orphan")
+    has_vendor_hyperlink = db.Column(db.Boolean, default=False)
+    vendor_hyperlink = db.Column(db.String(500), nullable=True)
+
+    def __repr__(self):
+        return f'<Article {self.title}>'
+
+# --- Helper Functions ---
+
+CATEGORIES = ["VMware", "Nutanix", "Upgrade Activities", "Hardware Vendors", "Other"]
+
+def resize_image(image_path):
+    """Resizes an image to a max dimension of 1600x1600."""
+    try:
+        with Image.open(image_path) as img:
+            if img.height > 1600 or img.width > 1600:
+                img.thumbnail((1600, 1600))
+                img.save(image_path)
+    except Exception as e:
+        app.logger.error(f"Error resizing image {image_path}: {e}")
+
+# --- Flask Routes ---
+
+@app.route('/')
+def index():
+    query = request.args.get('q')
+    category = request.args.get('category')
+    
+    articles_query = Article.query
+    
+    if category:
+        articles_query = articles_query.filter(Article.category == category)
+        
+    if query:
+        search_term = f"%{query}%"
+        articles_query = articles_query.filter(
+            or_(
+                Article.title.ilike(search_term),
+                Article.content.ilike(search_term),
+                Article.tags.ilike(search_term)
+            )
+        )
+        
+    articles = articles_query.order_by(Article.id.desc()).all()
+    return render_template('index.html', articles=articles, categories=CATEGORIES)
+
+@app.route('/article/<int:id>')
+def view_article(id):
+    article = Article.query.get_or_404(id)
+    return render_template('view.html', article=article)
+
+@app.route('/create', methods=['GET', 'POST'])
+def create_article():
+    if request.method == 'POST':
+        title = request.form['title']
+        category = request.form['category']
+        tags = request.form['tags']
+        content_raw = request.form['content']
+        
+        has_vendor_hyperlink = 'has_vendor_hyperlink' in request.form
+        vendor_hyperlink = request.form.get('vendor_hyperlink') if has_vendor_hyperlink else None
+        
+        new_article = Article(
+            title=title,
+            category=category,
+            tags=tags,
+            content_raw=content_raw,
+            content=markdown2.markdown(content_raw, extras=["fenced-code-blocks", "tables"]),
+            has_vendor_hyperlink=has_vendor_hyperlink,
+            vendor_hyperlink=vendor_hyperlink
+        )
+        
+        # Process multiple images
+        image_files = request.files.getlist('images')
+        for image_file in image_files:
+            if image_file and image_file.filename:
+                filename = secrets.token_hex(8) + os.path.splitext(image_file.filename)[1]
+                image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                image_file.save(image_path)
+                resize_image(image_path)
+                
+                new_image = ArticleImage(filename=filename)
+                new_article.images.append(new_image)
+                
+                # Auto-insert image markdown if not already present
+                if f'(/static/uploads/{filename})' not in new_article.content_raw:
+                    new_article.content_raw += f"\n\n![{filename}](/static/uploads/{filename})"
+
+        new_article.content = markdown2.markdown(new_article.content_raw, extras=["fenced-code-blocks", "tables"])
+        
+        db.session.add(new_article)
+        db.session.commit()
+        
+        flash('Article created successfully!', 'success')
+        return redirect(url_for('view_article', id=new_article.id))
+        
+    return render_template('form.html', categories=CATEGORIES, article=None)
+
+@app.route('/edit/<int:id>', methods=['GET', 'POST'])
+def edit_article(id):
+    article = Article.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        article.title = request.form['title']
+        article.category = request.form['category']
+        article.tags = request.form['tags']
+        article.content_raw = request.form['content']
+
+        article.has_vendor_hyperlink = 'has_vendor_hyperlink' in request.form
+        article.vendor_hyperlink = request.form.get('vendor_hyperlink') if article.has_vendor_hyperlink else None
+
+        # Handle image deletion
+        images_to_delete = request.form.getlist('delete_images')
+        for image_id in images_to_delete:
+            image_to_delete = ArticleImage.query.get(image_id)
+            if image_to_delete and image_to_delete.article_id == article.id:
+                # Remove file from disk
+                try:
+                    os.remove(os.path.join(app.config['UPLOAD_FOLDER'], image_to_delete.filename))
+                except OSError:
+                    pass # Ignore if file doesn't exist
+                
+                # Remove markdown link from content
+                image_markdown = f"\n\n![{image_to_delete.filename}](/static/uploads/{image_to_delete.filename})"
+                article.content_raw = article.content_raw.replace(image_markdown, "")
+
+                db.session.delete(image_to_delete)
+
+        # Handle new image upload
+        image_files = request.files.getlist('images')
+        for image_file in image_files:
+            if image_file and image_file.filename:
+                filename = secrets.token_hex(8) + os.path.splitext(image_file.filename)[1]
+                image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                image_file.save(image_path)
+                resize_image(image_path)
+                
+                new_image = ArticleImage(filename=filename, article_id=article.id)
+                db.session.add(new_image)
+                
+                # Auto-insert image markdown if not already present
+                if f'(/static/uploads/{filename})' not in article.content_raw:
+                    article.content_raw += f"\n\n![{filename}](/static/uploads/{filename})"
+
+        article.content = markdown2.markdown(article.content_raw, extras=["fenced-code-blocks", "tables"])
+
+        db.session.commit()
+        flash('Article updated successfully!', 'success')
+        return redirect(url_for('view_article', id=article.id))
+        
+    return render_template('form.html', categories=CATEGORIES, article=article)
+
+@app.route('/delete/<int:id>', methods=['POST'])
+def delete_article(id):
+    article = Article.query.get_or_404(id)
+    
+    # Delete associated images from disk
+    for image in article.images:
+        try:
+            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], image.filename))
+        except OSError:
+            pass # Ignore if file doesn't exist
+            
+    db.session.delete(article)
+    db.session.commit()
+    flash('Article deleted successfully!', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/bookmarks')
+def bookmarks():
+    # Hardcoded bookmark data
+    bookmarks_data = [
+        {"id": 1, "name": "Google", "url": "https://www.google.com", "logo": "/static/images/google_logo.png"},
+        {"id": 2, "name": "GitHub", "url": "https://www.github.com", "logo": "/static/images/github_logo.png"},
+        {"id": 3, "name": "ChatGPT", "url": "https://chat.openai.com", "logo": "/static/images/chatgpt_logo.png"},
+        {"id": 4, "name": "Gemini", "url": "https://gemini.google.com", "logo": "/static/images/gemini_logo.png"},
+    ]
+    return render_template('bookmarks.html', bookmarks=bookmarks_data)
+
+# Serve static files for uploads
+@app.route('/static/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+# --- Main Execution ---
+
+def create_initial_data():
+    """Creates the database and a sample article if none exist."""
+    with app.app_context():
+        db.create_all()
+        if not Article.query.first():
+            print("Creating a sample article...")
+            sample_content_raw = """
+This is a sample article about **VMware**.
+
+### Key Features
+- Virtualization
+- vSphere
+- ESXi
+
+Here is a table:
+
+| Feature | Description |
+|---|---|
+| vMotion | Live migration of running virtual machines. |
+| HA | High Availability for automatic VM restart. |
+
+And a code block:
+
+```powershell
+Get-VM -Name "MyVM" | Start-VM
+```
+"""
+            sample_content_html = markdown2.markdown(sample_content_raw, extras=["fenced-code-blocks", "tables"])
+            sample_article = Article(
+                title="Getting Started with VMware in Infra Ops IT Knowledge Base",
+                category="VMware",
+                tags="vmware, virtualization, vsphere",
+                content_raw=sample_content_raw.strip(),
+                content=sample_content_html,
+                has_vendor_hyperlink=True,
+                vendor_hyperlink="https://www.vmware.com/"
+            )
+            db.session.add(sample_article)
+            db.session.commit()
+            print("Sample article created.")
+
+if __name__ == '__main__':
+    create_initial_data()
+    app.run(debug=True)
