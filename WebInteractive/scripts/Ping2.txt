@@ -1,0 +1,41 @@
+param (
+    [string]$target
+)
+
+Write-Output "Starting ping test..."
+Write-Output "Raw target string from input file: $target"
+
+# Split the input string by spaces, commas, semicolons, or newlines
+$servers = $target -split '[ ,;\r\n]+' | Where-Object { $_ -ne '' }
+
+if ($servers.Count -eq 0) {
+    Write-Warning "No valid server names found in the input."
+    exit
+}
+
+Write-Output "`nServers to be pinged:"
+$servers | ForEach-Object { Write-Output "- $_" }
+
+# Interactive Prompt
+$confirmation = Request-Input -Prompt "`nDo you want to proceed with pinging these servers? (y/n): "
+
+if ($confirmation -ne 'y') {
+    Write-Warning "Ping operation cancelled by user."
+    exit
+}
+
+Write-Output "`nUser confirmed. Proceeding with ping..."
+
+foreach ($server in $servers) {
+    Write-Output "`nPinging $server..."
+    try {
+        Test-Connection -ComputerName $server -Count 2 -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Failed to ping $server. Error: $_"
+    }
+}
+
+Write-Output "`nPing test finished."
+
+

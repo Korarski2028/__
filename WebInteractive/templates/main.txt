@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Main Page</title>
+    <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color:#0056b3; 
+            padding: 0.7rem;
+        }
+        .main-container {
+            max-width: 1300px;
+            margin: auto;
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 0.5rem;  #1ren
+        }
+        .flash-messages {
+            list-style-type: none;
+            padding: 0;
+            margin: 0; /* Remove vertical margins */
+            flex-grow: 1; /* Allow this to take up space */
+            text-align: center;
+        }
+        .flash-messages li {
+            padding: 0.5rem 1rem; /* Make padding more compact */
+            border-radius: 4px;
+            display: inline-block; /* Allow centering */
+        }
+        .flash-messages .error {
+            color: #D8000C;
+            background-color: #FFBABA;
+        }
+        .flash-messages .success {
+            color: #4F8A10;
+            background-color: #DFF2BF;
+        }
+        .content-wrapper {
+            display: flex;
+            gap: 1rem;
+        }
+        .column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        input[type="password"], textarea, select {
+            padding: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        textarea {
+             height: 95px;
+        }
+        .left-column input, .left-column .form-group {
+            width: 500px;
+        }
+        .right-column textarea, .right-column select, .right-column .form-group {
+            width: 655px; #654
+        }
+        button {
+            padding: 0.5rem;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 0.5rem;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .console-area {
+            margin-top: 0.5rem;
+            background-color: black;
+            color: #00FF00;
+            font-family: 'Courier New', Courier, monospace;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .output-box {
+            height: 420px;
+            overflow-y: scroll;
+            padding: 1rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #console-input {
+            width: 100%;
+            border: none;
+            background-color: #333;
+            color: #00FF00;
+            padding: 0.5rem;
+            box-sizing: border-box;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        #console-input:focus {
+            outline: none;
+        }
+        .logout-link {
+             display: block;
+             text-align: center;
+             margin-top: 2rem;
+        }
+        a.button {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        a.button:hover {
+            background-color: #5a6268;
+        }
+
+        .header-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem; /* Give some space below the header */
+            gap: 0.5rem;
+        }
+
+        .header-container h1 {
+            margin: 0;
+            white-space: nowrap; /* Prevent title from wrapping */
+        }
+
+        .logout-button {
+            background-color: #dc3545 !important;
+            margin-left: auto;
+            white-space: nowrap; /* Prevent button text from wrapping */
+        }
+
+        .logout-button:hover {
+            background-color: #c82333 !important;
+        }
+        
+        .console-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .console-actions .btn-blue {
+            display: inline-block;
+            vertical-align: middle;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            text-decoration: none;
+            margin-top: 0;
+        }
+
+        .console-actions .btn-blue:hover {
+            background-color: #0056b3;
+        }
+
+        .console-actions .btn-blue:disabled {
+            background-color: #a0cffa;
+            cursor: not-allowed;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="header-container">
+            <h1>Web Interactive Tool</h1>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <ul class="flash-messages">
+                    {% for category, message in messages %}
+                        <li class="{{ category }}">{{ message }}</li>
+                    {% endfor %}
+                    </ul>
+                {% endif %}
+            {% endwith %}
+            <a href="{{ url_for('logout') }}" class="button logout-button">Logout</a>
+        </div>
+
+        <div class="content-wrapper">
+            <!-- Left Column -->
+            <div class="column left-column">
+                <form method="POST" action="{{ url_for('save_credential', cred_type='cvm') }}" class="form-group">
+                    <label for="pe-admin">PE Admin Password</label>
+                    <input type="password" id="pe-admin" name="password" required>
+                    <button type="submit">Send</button>
+                </form>
+
+                <form method="POST" action="{{ url_for('save_credential', cred_type='ntnx') }}" class="form-group">
+                    <label for="nutanix-ssh">Nutanix SSH Password</label>
+                    <input type="password" id="nutanix-ssh" name="password" required>
+                    <button type="submit">Send</button>
+                </form>
+            </div>
+
+            <!-- Right Column -->
+            <div class="column right-column">
+                <form method="POST" action="{{ url_for('save_server_list') }}" class="form-group">
+                    <label for="server-list">Please enter Server | Cluster | vCenter as needed:</label>
+                    <textarea id="server-list" name="Server_List" required>{{ server_list_content }}</textarea>
+                    <button type="submit">Send</button>
+                </form>
+
+                <div id="execute-form" class="form-group">
+                    <label for="script-select">Select Script</label>
+                    <select name="script_name" id="script-select" required>
+                        <option value="" disabled selected>--Please choose an option--</option>
+                        {% for script in scripts %}
+                            <option value="{{ script }}">{{ script }}</option>
+                        {% endfor %}
+                    </select>
+                    <button id="execute-button">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="console-area">
+            <div class="output-box" id="output-box">
+                <pre id="output-pre">Welcome to the interactive console. Ready to execute scripts.</pre>
+            </div>
+            <input type="text" id="console-input" placeholder="Type input here and press Enter..." disabled>
+        </div>
+
+        <div class="console-actions">
+            <button id="copy-button" class="btn-blue" disabled>Copy to Clipboard</button>
+            <button id="clear-button" class="btn-blue">Clear Console</button>
+            <a href="{{ url_for('output_files') }}" target="_blank" class="btn-blue">Output</a>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const socket = io();
+            const executeButton = document.getElementById('execute-button');
+            const scriptSelect = document.getElementById('script-select');
+            const outputBox = document.getElementById('output-box');
+            const outputPre = document.getElementById('output-pre');
+            const consoleInput = document.getElementById('console-input');
+            const copyButton = document.getElementById('copy-button');
+            const clearButton = document.getElementById('clear-button');
+
+            socket.on('connect', function() {
+                console.log('Connected to server.');
+            });
+
+            socket.on('disconnect', function() {
+                console.log('Disconnected from server.');
+            });
+
+            socket.on('script_output', function(msg) {
+                outputPre.textContent += msg.data;
+                outputBox.scrollTop = outputBox.scrollHeight; // Auto-scroll
+            });
+
+            socket.on('script_input_request', function(msg) {
+                consoleInput.disabled = false;
+                consoleInput.focus();
+            });
+
+            socket.on('script_finished', function(msg) {
+                outputPre.textContent += msg.data;
+                outputBox.scrollTop = outputBox.scrollHeight; // Auto-scroll
+                consoleInput.disabled = true; // Disable input when script finishes
+                copyButton.disabled = false; // Enable copy button
+            });
+
+            executeButton.addEventListener('click', () => {
+                const scriptName = scriptSelect.value;
+                if (!scriptName) {
+                    alert('Please select a script to execute.');
+                    return;
+                }
+                // Clear the console for the new script execution
+                outputPre.textContent = `Executing ${scriptName}...\n\n`;
+                consoleInput.disabled = true; // Initially disabled
+                copyButton.disabled = true; // Disable copy button at start
+                consoleInput.focus();
+
+                socket.emit('execute_script', { script_name: scriptName });
+            });
+
+            consoleInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const input = consoleInput.value;
+                    outputPre.textContent += input + '\n'; // Echo input to console
+                    outputBox.scrollTop = outputBox.scrollHeight;
+                    socket.emit('input_to_script', { data: input });
+                    consoleInput.value = '';
+                }
+            });
+
+            clearButton.addEventListener('click', () => {
+                outputPre.textContent = '';
+            });
+
+            copyButton.addEventListener('click', () => {
+                const textToCopy = outputPre.textContent;
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    alert('Console content copied to clipboard!');
+                }).catch(err => {
+                    console.error('Failed to copy text: ', err);
+                    alert('Failed to copy content. See browser console for details.');
+                });
+            });
+        });
+    </script>
+</body>
+</html>
